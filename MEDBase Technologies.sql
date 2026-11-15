@@ -1339,72 +1339,191 @@ FOR EACH ROW EXECUTE FUNCTION fn_actualizar_cantidad_suministro();
 -- DISPARADORESOK
 
 
-INSERT INTO farmacia VALUES (800, 'Farmacia Total', 'Calle 800', '3100000800');
+INSERT INTO farmacias VALUES (800, 'Farmacia Total', 'Calle 800', '3100000800');
 
-INSERT INTO persona VALUES (800, 'Persona Total', 'CC', '1000000800', '3000000800', 'p800@email.com', 30, 'M');
+INSERT INTO personas VALUES (800, 'Persona Total', 'CC', '1000000800', '3000000800', 'p800@email.com', 30, 'M');
 
-INSERT INTO empleado VALUES (800, 2000000, '2025-01-10', 'Farmaceutico', 800);
+INSERT INTO empleados VALUES (800, 2000000, '2025-01-10', 'Farmaceutico', 800);
 
-INSERT INTO medicamento VALUES
+INSERT INTO medicamentos VALUES
 (800, 'Medicamento Total Uno', 5000.00, 'Analgesico', 'Oral'),
 (801, 'Medicamento Total Dos', 8000.00, 'Antialergico', 'Oral');
 
-INSERT INTO lote VALUES
+INSERT INTO lotes VALUES
 (800, '2027-12-31', 100, 800, 800),
 (801, '2027-12-31', 100, 801, 800);
 
-INSERT INTO venta VALUES (800, CURRENT_DATE, 0, 'Efectivo', 800, NULL, 800);
+INSERT INTO ventas VALUES (800, CURRENT_DATE, 0, 'Efectivo', 800, NULL, 800);
 
 -- al agregar lineas, el total es la suma del detalle
-INSERT INTO venta_medicamento VALUES (800, 800, 2, 5000.00);
-INSERT INTO venta_medicamento VALUES (800, 801, 1, 8000.00);
+INSERT INTO ventas_medicamentos VALUES (800, 800, 2, 5000.00);
+INSERT INTO ventas_medicamentos VALUES (800, 801, 1, 8000.00);
 
 -- debe devolver 18000
-SELECT id_venta, total FROM venta WHERE id_venta = 800;
+SELECT id_venta, total FROM ventas WHERE id_venta = 800;
 
 -- al cambiar una linea, el total se recalcula
-UPDATE venta_medicamento SET cantidad = 3 WHERE id_venta = 800 AND id_medicamento = 800;
+UPDATE ventas_medicamentos SET cantidad = 3 WHERE id_venta = 800 AND id_medicamento = 800;
 
 -- debe devolver 23000
-SELECT id_venta, total FROM venta WHERE id_venta = 800;
+SELECT id_venta, total FROM ventas WHERE id_venta = 800;
 
 -- al borrar una linea, el total se recalcula
-DELETE FROM venta_medicamento WHERE id_venta = 800 AND id_medicamento = 801;
+DELETE FROM ventas_medicamentos WHERE id_venta = 800 AND id_medicamento = 801;
 
 -- debe devolver 15000
-SELECT id_venta, total FROM venta WHERE id_venta = 800;
+SELECT id_venta, total FROM ventas WHERE id_venta = 800;
 
 -- al cambiar el id de la venta, el total se conserva
-UPDATE venta SET id_venta = 810 WHERE id_venta = 800;
+UPDATE ventas SET id_venta = 810 WHERE id_venta = 800;
 
 -- debe devolver 15000
-SELECT id_venta, total FROM venta WHERE id_venta = 810;
+SELECT id_venta, total FROM ventas WHERE id_venta = 810;
 
 -- una venta sin detalle conserva total 0
-INSERT INTO venta VALUES (811, CURRENT_DATE, 0, 'Efectivo', 800, NULL, 800);
+INSERT INTO ventas VALUES (811, CURRENT_DATE, 0, 'Efectivo', 800, NULL, 800);
 
 -- debe devolver 0
-SELECT id_venta, total FROM venta WHERE id_venta = 811;
+SELECT id_venta, total FROM ventas WHERE id_venta = 811;
 
 -- al borrar la venta, su detalle se borra sin error
-DELETE FROM venta WHERE id_venta = 810;
+DELETE FROM ventas WHERE id_venta = 810;
 
 -- debe devolver 0 filas
-SELECT * FROM venta_medicamento WHERE id_venta = 810;
+SELECT * FROM ventas_medicamentos WHERE id_venta = 810;
 
 -- DISPARADORESNOOK
 
-INSERT INTO venta VALUES (820, CURRENT_DATE, 0, 'Efectivo', 800, NULL, 800);
+INSERT INTO ventas VALUES (820, CURRENT_DATE, 0, 'Efectivo', 800, NULL, 800);
 
-INSERT INTO venta_medicamento VALUES (820, 800, 2, 5000.00);
+INSERT INTO ventas_medicamentos VALUES (820, 800, 2, 5000.00);
 
 -- no se puede poner a mano un total distinto al del detalle
-UPDATE venta SET total = 1 WHERE id_venta = 820;
+UPDATE ventas SET total = 1 WHERE id_venta = 820;
 
 -- no se puede poner un total a una venta sin detalle
-UPDATE venta SET total = 5000 WHERE id_venta = 811;
+UPDATE ventas SET total = 5000 WHERE id_venta = 811;
 
 -- debe seguir en 10000
-SELECT id_venta, total FROM venta WHERE id_venta = 820;
+SELECT id_venta, total FROM ventas WHERE id_venta = 820;
 
+
+-- INDICES
+
+-- Registrar venta / Mantener lote: fn_verificar_stock y fn_descontar_stock filtran por farmacia, medicamento y vencimiento
+CREATE INDEX idx_lotes_farmacia_medicamento_ven ON lotes (id_farmacia, id_medicamento, fecha_ven);
+
+-- Medicamentos por vencerse
+CREATE INDEX idx_lotes_fecha_ven ON lotes (fecha_ven);
+
+-- Historial de compras de un paciente
+CREATE INDEX idx_ventas_paciente_fecha ON ventas (id_paciente, fecha DESC);
+
+-- Ventas del mes por farmacia
+CREATE INDEX idx_ventas_farmacia_fecha ON ventas (id_farmacia, fecha);
+
+-- Historial de suministros de un proveedor
+CREATE INDEX idx_suministros_proveedor_fecha ON suministros (id_proveedor, fecha DESC);
+
+
+-- VISTAS
+
+-- Stock vigente por farmacia y medicamento
+CREATE OR REPLACE VIEW v_inventario_farmacia AS
+SELECT f.id_farmacia, f.nombre AS farmacia, m.id_medicamento, m.nombre AS medicamento, m.tipo_medicamento, SUM(l.cant_dispo) AS stock
+FROM lotes l
+JOIN medicamentos m ON m.id_medicamento = l.id_medicamento
+JOIN farmacias f ON f.id_farmacia = l.id_farmacia
+WHERE l.fecha_ven >= CURRENT_DATE
+GROUP BY f.id_farmacia, f.nombre, m.id_medicamento, m.nombre, m.tipo_medicamento;
+
+-- Lotes vencidos o por vencer en 30 dias
+CREATE OR REPLACE VIEW v_lotes_vencimiento AS
+SELECT l.id_lote, f.nombre AS farmacia, m.nombre AS medicamento, l.fecha_ven, l.cant_dispo, CASE WHEN l.fecha_ven < CURRENT_DATE THEN 'Vencido' ELSE 'Por vencer' END AS estado
+FROM lotes l
+JOIN medicamentos m ON m.id_medicamento = l.id_medicamento
+JOIN farmacias f ON f.id_farmacia = l.id_farmacia
+WHERE l.fecha_ven <= CURRENT_DATE + INTERVAL '30 days';
+
+-- Detalle de ventas con subtotal
+CREATE OR REPLACE VIEW v_ventas_detalle AS
+SELECT v.id_venta, v.fecha, v.metodo_pago, v.id_paciente, v.id_empleado, f.nombre AS farmacia,m.nombre AS medicamento, vm.cantidad, vm.precio_unitario,vm.cantidad * vm.precio_unitario AS subtotal
+
+FROM ventas v
+JOIN ventas_medicamentos vm ON vm.id_venta = v.id_venta
+JOIN medicamentos m ON m.id_medicamento = vm.id_medicamento
+JOIN farmacias f ON f.id_farmacia = v.id_farmacia;
+
+-- Detalle de suministros con subtotal
+CREATE OR REPLACE VIEW v_suministros_detalle AS
+SELECT s.id_suministro, s.id_proveedor, s.id_farmacia, s.fecha, s.estado,
+m.nombre AS medicamento, sm.cantidad_med, sm.precio_suministro,
+sm.cantidad_med * sm.precio_suministro AS subtotal
+
+FROM suministros s
+JOIN suministros_medicamentos sm ON sm.id_suministro = s.id_suministro
+JOIN medicamentos m ON m.id_medicamento = sm.id_medicamento;
+
+
+-- XINDICESVISTAS
+
+-- DROP VIEW IF EXISTS v_suministros_detalle;
+-- DROP VIEW IF EXISTS v_ventas_detalle;
+-- DROP VIEW IF EXISTS v_lotes_vencimiento;
+-- DROP VIEW IF EXISTS v_inventario_farmacia;
+
+-- DROP INDEX IF EXISTS idx_suministros_proveedor_fecha;
+-- DROP INDEX IF EXISTS idx_ventas_farmacia_fecha;
+-- DROP INDEX IF EXISTS idx_ventas_paciente_fecha;
+-- DROP INDEX IF EXISTS idx_lotes_fecha_ven;
+-- DROP INDEX IF EXISTS idx_lotes_farmacia_medicamento_ven;
+
+
+-- INDICESVISTASOK
+
+INSERT INTO proveedores VALUES (700, 'Proveedor Indices', '900700700-0', '3000000700', 'Calle 700');
+
+INSERT INTO farmacias VALUES (700, 'Farmacia Indices', 'Calle 700', '3100000700');
+
+INSERT INTO personas VALUES
+(700, 'Persona Cajero Indices', 'CC', '1000000700', '3000000700', 'p700@email.com', 30, 'M'),
+(701, 'Persona Paciente Indices', 'CC', '1000000701', '3000000701', 'p701@email.com', 30, 'F');
+
+INSERT INTO empleados VALUES (700, 2000000, '2025-01-10', 'Cajero', 700);
+
+INSERT INTO pacientes VALUES (700, (CURRENT_DATE - INTERVAL '30 years')::date, 'Calle 700 #1', 'Ninguna', 701);
+
+INSERT INTO medicamentos VALUES
+(700, 'Medicamento Indice Uno', 5000.00, 'Analgesico', 'Oral'),
+(701, 'Medicamento Indice Dos', 8000.00, 'Antialergico', 'Oral');
+
+INSERT INTO lotes VALUES
+(700, CURRENT_DATE + 10, 40, 700, 700),
+(701, '2099-12-31', 100, 700, 700),
+(702, '2099-12-31', 60, 701, 700);
+
+INSERT INTO suministros VALUES (700, CURRENT_DATE, 0, 'Pendiente', 700, 700);
+
+INSERT INTO suministros_medicamentos VALUES (700, 700, 50, 3500.00);
+INSERT INTO suministros_medicamentos VALUES (700, 701, 20, 6000.00);
+
+INSERT INTO ventas VALUES (700, CURRENT_DATE, 0, 'Efectivo', 700, 700, 700);
+
+INSERT INTO ventas_medicamentos VALUES (700, 700, 3, 5000.00);
+INSERT INTO ventas_medicamentos VALUES (700, 701, 2, 8000.00);
+
+
+-- vistas
+
+-- debe devolver 137 y 58
+SELECT medicamento, stock FROM v_inventario_farmacia WHERE id_farmacia = 700 ORDER BY medicamento;
+
+-- debe devolver el lote 700 como Por vencer con 37 unidades
+SELECT id_lote, medicamento, cant_dispo, estado FROM v_lotes_vencimiento WHERE farmacia = 'Farmacia Indices';
+
+-- debe devolver subtotales 15000 y 16000
+SELECT medicamento, cantidad, precio_unitario, subtotal FROM v_ventas_detalle WHERE id_paciente = 700 ORDER BY medicamento;
+
+-- debe devolver subtotales 175000 y 120000
+SELECT medicamento, cantidad_med, precio_suministro, subtotal FROM v_suministros_detalle WHERE id_proveedor = 700 ORDER BY medicamento;
 
