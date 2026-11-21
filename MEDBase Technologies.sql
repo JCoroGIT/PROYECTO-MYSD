@@ -1526,4 +1526,3 @@ SELECT medicamento, cantidad, precio_unitario, subtotal FROM v_ventas_detalle WH
 
 -- debe devolver subtotales 175000 y 120000
 SELECT medicamento, cantidad_med, precio_suministro, subtotal FROM v_suministros_detalle WHERE id_proveedor = 700 ORDER BY medicamento;
-
