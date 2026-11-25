@@ -22,7 +22,6 @@ CHECK (VALUE IN ('Oral', 'Inyectable', 'Topico', 'Transdermico', 'Inhalatoria'))
 CREATE DOMAIN TCargo AS varchar(20)
 CHECK (VALUE IN ('Administrador', 'Farmaceutico','Cajero','Auxiliar'));
 
-
 -- CREACION DE TABLAS
 
 CREATE TABLE proveedores (

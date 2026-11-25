@@ -177,7 +177,7 @@ DELETE FROM farmacias WHERE id_farmacia = 310;
 -- debe devolver 0 filas
 SELECT id_inventario AS id FROM inventarios WHERE id_farmacia = 310
 UNION ALL
-SELECT id_lote FROM lote WHERE id_farmacia = 310;
+SELECT id_lote FROM lotes WHERE id_farmacia = 310;
 
 -- ACCIONESNOOK
 
